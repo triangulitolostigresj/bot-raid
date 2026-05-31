@@ -24,7 +24,7 @@ const invasionEmbed = new EmbedBuilder()
 
 const trianguloEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
-  .setDescription('TRIANGULITO ES EL MEJOR,HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
+  .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO');
   .setImage('attachment://triangulito.webp');
 
 const ayudaEmbed = new EmbedBuilder()
