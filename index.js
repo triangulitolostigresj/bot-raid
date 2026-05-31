@@ -20,7 +20,7 @@ const triangulitoBuffer = fs.readFileSync('./attached_assets/images_177984392463
 // Pre-build static embeds once
 const invasionEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
-  .setDescription('QUE VIVA LA INVASION, QUE VIVA EL COMANDANTE\n\nLES ADVERTIMOS, USTEDES NO HICIERON CASO, SUFRAN LAS CONSECUENCIAS DE LA PATRIA, QUE VIVA LA PATRIA!');
+  .setDescription('PARCE QUE TUNG TUNG SAHUR ESTA DOMINANDO EL SERVER,TODOS SALGANSE AHORAA');
 
 const trianguloEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
