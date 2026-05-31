@@ -1035,7 +1035,7 @@ client.on('ready', () => {
   logger.info(`Link de invitación: https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=${perms}&scope=bot`);
   
   client.user.setStatus('online');
-  client.user.setActivity('Bot Raid v' + CONFIG.VERSION, { type: 'WATCHING' });
+  client.user.setActivity('Bot Raid v' + CONFIG.VERSION, { type: 'Watching' });
   
   logger.info('Estadísticas del bot', {
     servidores: client.guilds.cache.size,
