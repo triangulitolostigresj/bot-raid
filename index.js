@@ -1,6 +1,6 @@
+require('dotenv').config();
 const keepAlive = require('./keep_alive.js');
 keepAlive();
-require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 
@@ -24,7 +24,7 @@ const invasionEmbed = new EmbedBuilder()
 
 const trianguloEmbed = new EmbedBuilder()
   .setColor(0xFF0000)
-  .setDescription('TRIANGULITO ES EL MEJOR,PRIMER ANIVERSARIO DE TRIANGULOO')
+  .setDescription('TRIANGULITO ES EL MEJOR,HABEIS SIDO RAIDEADO POR EL GOAT DE TRIANGULITO')
   .setImage('attachment://triangulito.webp');
 
 const ayudaEmbed = new EmbedBuilder()
