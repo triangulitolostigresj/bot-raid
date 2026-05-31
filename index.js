@@ -15,7 +15,7 @@ const client = new Client({
 
 // Pre-load image buffers once at startup to avoid re-reading files on every message
 const iconBuffer = fs.readFileSync('./attached_assets/40fd13ae2d1126651d55d5411b28b65f_1768104286084.png');
-const triangulitoBuffer = fs.readFileSync('./attached_assets/GKvdAxlrAZkbrEsBAO2c6bNmmd0ObmdjAAAF.gif');
+const triangulitoBuffer = fs.readFileSync('./attached_assets/images_1779843924633.webp');
 
 // Pre-build static embeds once
 const invasionEmbed = new EmbedBuilder()
