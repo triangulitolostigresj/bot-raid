@@ -37,7 +37,7 @@ const CONFIG = {
   RETRY_DELAY: 1000,
   OWNER_ID: process.env.OWNER_ID || null,
   PREFIX: '.',
-  VERSION: '3.1',
+  VERSION: '3.2',
   DEBUG_MODE: process.env.DEBUG_MODE === 'true'
 };
 
@@ -371,35 +371,33 @@ class BotUtils {
     try {
       let totalSpammed = 0;
       const failedChannels = [];
+      const validChannels = channels.filter(c => c && c.isTextBased());
 
-      for (const channel of channels) {
-        if (!channel || !channel.isTextBased()) continue;
-
-        try {
-          for (let i = 0; i < msgCount; i++) {
-            try {
-              const msg = messageBuilder();
-              logger.debug(`Enviando mensaje a canal ${channel.id}`, { attempt: i + 1 });
-              await channel.send(msg);
-              totalSpammed++;
-              await this.sleep(delay);
-            } catch (err) {
+      // Enviar 1 mensaje a la vez en TODOS los canales simultáneamente (msgCount veces)
+      for (let i = 0; i < msgCount; i++) {
+        const sendPromises = validChannels.map(channel => 
+          channel.send(messageBuilder())
+            .then(() => totalSpammed++)
+            .catch(err => {
               if (err.code !== 50013) {
                 logger.debug('Error enviando mensaje', { error: err.message, channelId: channel.id });
               }
-              break;
-            }
-          }
-        } catch (err) {
-          failedChannels.push(channel.id);
-          logger.warn('Error en canal de spam', { error: err.message, channelId: channel.id });
+              failedChannels.push(channel.id);
+            })
+        );
+
+        await Promise.allSettled(sendPromises);
+        logger.debug(`Ronda ${i + 1}/${msgCount} completada`, { channelsCount: validChannels.length });
+        
+        if (i < msgCount - 1) {
+          await this.sleep(delay);
         }
       }
 
-      if (channels[0]?.guild?.id) {
-        database.addRaidStat(channels[0].guild.id, 'spam', totalSpammed);
+      if (validChannels[0]?.guild?.id) {
+        database.addRaidStat(validChannels[0].guild.id, 'spam', totalSpammed);
       }
-      logger.success(`Spam completado: ${totalSpammed} mensajes en ${channels.length} canales`, { failed: failedChannels.length });
+      logger.success(`Spam completado: ${totalSpammed} mensajes en ${validChannels.length} canales`, { failed: failedChannels.length });
       return totalSpammed;
     } catch (err) {
       logger.error('Error en spam', { error: err.message });
