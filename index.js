@@ -992,6 +992,157 @@ const COMMANDS = {
     }
   },
 
+  async rename(message, guild, client, args) {
+    try {
+      const name = args.join(' ');
+      if (!name) {
+        return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un nombre para el servidor')] }).catch(() => {});
+      }
+      await guild.setName(name.substring(0, 100));
+      database.addCommand('rename', message.author.id, guild.id);
+      logger.success(`Servidor renombrado a: ${name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Servidor renombrado a: ${name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando rename', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error renombrando servidor')] }).catch(() => {});
+    }
+  },
+
+  async createchannel(message, guild, client, args) {
+    try {
+      const channelName = args.join(' ') || 'nuevo-canal';
+      const channel = await guild.channels.create({
+        name: channelName.substring(0, 100),
+        type: ChannelType.GuildText
+      });
+      database.addCommand('createchannel', message.author.id, guild.id);
+      logger.success(`Canal creado: ${channel.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canal creado: #${channel.name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando createchannel', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error creando canal')] }).catch(() => {});
+    }
+  },
+
+  async deletechannel(message, guild, client, args) {
+    try {
+      const channel = message.mentions.channels.first() || guild.channels.cache.get(args[0]);
+      if (!channel) {
+        return message.reply({ embeds: [EMBEDS.error('Debes mencionar un canal o proporcionar su ID')] }).catch(() => {});
+      }
+      await channel.delete();
+      database.addCommand('deletechannel', message.author.id, guild.id);
+      logger.success(`Canal eliminado: ${channel.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canal eliminado`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando deletechannel', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error eliminando canal')] }).catch(() => {});
+    }
+  },
+
+  async creerole(message, guild, client, args) {
+    try {
+      const roleName = args.join(' ') || 'Nuevo Rol';
+      const role = await guild.roles.create({
+        name: roleName.substring(0, 100),
+        color: BotUtils.getRandomColor(),
+        permissions: []
+      });
+      database.addCommand('creerole', message.author.id, guild.id);
+      logger.success(`Rol creado: ${role.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Rol creado: @${role.name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando creerole', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error creando rol')] }).catch(() => {});
+    }
+  },
+
+  async deleterole(message, guild, client, args) {
+    try {
+      const role = message.mentions.roles.first() || guild.roles.cache.get(args[0]);
+      if (!role) {
+        return message.reply({ embeds: [EMBEDS.error('Debes mencionar un rol o proporcionar su ID')] }).catch(() => {});
+      }
+      if (!role.editable) {
+        return message.reply({ embeds: [EMBEDS.error('No puedo eliminar ese rol')] }).catch(() => {});
+      }
+      await role.delete();
+      database.addCommand('deleterole', message.author.id, guild.id);
+      logger.success(`Rol eliminado: ${role.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Rol eliminado`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando deleterole', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error eliminando rol')] }).catch(() => {});
+    }
+  },
+
+  async servericon(message, guild, client, args) {
+    try {
+      const icon = message.attachments.first();
+      if (!icon) {
+        return message.reply({ embeds: [EMBEDS.error('Debes adjuntar una imagen para usar como icono')] }).catch(() => {});
+      }
+      await guild.setIcon(icon.url);
+      database.addCommand('servericon', message.author.id, guild.id);
+      logger.success('Ícono del servidor actualizado');
+      message.reply({ embeds: [EMBEDS.success('✅ Ícono del servidor actualizado')] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando servericon', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error actualizando ícono')] }).catch(() => {});
+    }
+  },
+
+  async mutechannel(message, guild, client, args) {
+    try {
+      const channel = message.mentions.channels.first() || message.channel;
+      if (!channel) {
+        return message.reply({ embeds: [EMBEDS.error('Canal no encontrado')] }).catch(() => {});
+      }
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
+      database.addCommand('mutechannel', message.author.id, guild.id);
+      logger.success(`Canal silenciado: ${channel.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canal #${channel.name} silenciado`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando mutechannel', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error silenciando canal')] }).catch(() => {});
+    }
+  },
+
+  async unmutechannel(message, guild, client, args) {
+    try {
+      const channel = message.mentions.channels.first() || message.channel;
+      if (!channel) {
+        return message.reply({ embeds: [EMBEDS.error('Canal no encontrado')] }).catch(() => {});
+      }
+      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: true });
+      database.addCommand('unmutechannel', message.author.id, guild.id);
+      logger.success(`Canal desilenciado: ${channel.name}`);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canal #${channel.name} desilenciado`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando unmutechannel', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error desilenciando canal')] }).catch(() => {});
+    }
+  },
+
+  async spam(message, guild, client, args) {
+    try {
+      const count = parseInt(args[0]) || 5;
+      const text = args.slice(1).join(' ') || '🚨 RAIDED 🚨';
+      const channel = message.channel;
+
+      for (let i = 0; i < count; i++) {
+        await channel.send({ content: text });
+        await BotUtils.sleep(100);
+      }
+
+      database.addCommand('spam', message.author.id, guild.id);
+      logger.success(`Spam completado: ${count} mensajes`);
+    } catch (err) {
+      logger.error('Error en comando spam', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error en spam')] }).catch(() => {});
+    }
+  },
+
   formatUptime(uptime) {
     if (!uptime) return 'N/A';
     const days = Math.floor(uptime / 86400000);
